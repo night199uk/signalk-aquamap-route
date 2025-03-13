@@ -19,6 +19,7 @@ const path = require('path')
 const xmldom = new (require('xmldom').DOMParser)()
 const get = require('lodash.get')
 const uuidv3 = require('uuid/v3')
+const url = require('url');
 
 module.exports = function (app) {
   const error =
@@ -40,10 +41,10 @@ module.exports = function (app) {
 
   plugin.statusMessage = function () {}
 
-  plugin.id = 'simple-gpx'
-  plugin.name = 'Simple GPX'
+  plugin.id = 'signalk-aquamap-route'
+  plugin.name = 'SignalK Aqua Map Routes'
   plugin.description =
-    'Plugin to incorporate gis data from different formats gpx files into the SK API'
+    'Plugin to expose routes from Aqua Map via the SignalK routes API'
 
   plugin.schema = {
     type: 'object',
@@ -63,95 +64,71 @@ module.exports = function (app) {
       res.json(features)
     })
 
-    router.get('/resources/tracks', (req, res) => {
-      const features = readGpxDirectory(
-        path.join(__dirname, 'samples/tracks'),
-        app.selfId
-      )
-      for (var id in features) {
-        const feature = features[id]
-        feature.properties.type = 'track'
-        const coordTimes = get(feature, 'properties.coordTimes')
-        const coordinates = get(feature, 'geometry.coordinates')
-        if (
-          get(feature, 'geometry.type') === 'MultiLineString' &&
-          coordTimes &&
-          coordinates
-        ) {
-          if (coordTimes.length === coordinates.length) {
-            coordTimes.forEach((timesArray, i) => {
-              timesArray.forEach((time, j) => {
-                coordinates[i][j].push(0)
-                coordinates[i][j].push(new Date(time).getTime())
-              })
-            })
-            delete feature.properties.coordTimes
-          }
-        }
-      }
-      res.json(features)
-    })
-
-    router.get('/resources/waypoints', (req, res) => {
-      res.json(
-        readGpxDirectory(path.join(__dirname, 'samples/waypoints'), app.selfId)
-      )
-    })
-
-    router.get('/resources/locations', (req, res) => {
-      res.json(
-        readGpxDirectories(
-          [
-            {
-              dir: 'samples/waypoints',
-              type: 'waypoint'
-            },
-            {
-              dir: 'samples/points_of_interest',
-              type: 'pointofinterest'
-            }
-          ].map(({ dir, type }) => ({ dir: path.join(__dirname, dir), type })),
-          app.selfId
-        )
-      )
-    })
-
     return router
   }
 
   return plugin
 
-  function readGpxDirectories (dirSpecs, uuidNamespace) {
-    return dirSpecs.reduce((acc, dirSpec) => {
-      const features = readGpxDirectory(dirSpec.dir, uuidNamespace)
-      Object.keys(features).forEach(key => {
-        acc[key] = features[key]
-        acc[key].properties.type = dirSpec.type
-      })
-      return acc
-    }, {})
-  }
-
   function readGpxDirectory (dir, uuidNamespace) {
-    return fs.readdirSync(dir).reduce((acc, filename) => {
-      try {
-        const geojson = tj.gpx(
-          xmldom.parseFromString(
-            fs.readFileSync(path.join(dir, filename), 'utf8')
-          )
-        )
-        if (
-          geojson.type === 'FeatureCollection' &&
-          Array.isArray(geojson.features)
-        ) {
-          geojson.features.forEach((feature, i) => {
-            acc[uuidv3(filename + i, uuidNamespace)] = feature
-          })
-        }
-      } catch (e) {
-        console.error(e)
+// params = {
+//     'username': 'night199uk',
+//     'cmd': 'open',
+//     'target': 'l1_Lw',
+//     'init': '1',
+//     'tree': '1',
+// }
+// 
+// response = requests.get(
+//     'https://www.globalterramaps.com/lib/elFinder-2.1.40/php/connector.minimal.php',
+//     params=params,
+// )
+// files = response.json()['files']
+// for file in files:
+//     if file['mime'] == 'application/gpx+xml':
+//         data = {
+//             'user': 'night199uk',
+//             'link': 'userareas/night199uk/night199uk-root/{}'.format(file['name']),
+//         }
+//         response = requests.post('https://www.globalterramaps.com/GetTrackFile.php', data=data)
+//         print(response.text)
+    var url = new url.URL('https://www.globalterramaps.com/lib/elFinder-2.1.40/php/connector.minimal.php')
+    var params = {
+      username: 'night199uk',
+      cmd: 'open',
+      target: 'l1_Lw',
+      init: 1,
+      tree: 1,
+    }
+    url.search = new url.URLSearchParams(params).toString()
+    result = fetch(url).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return acc
-    }, {})
+      return response.json();
+    })
+    .then(data => {
+      data['files'].forEach(function(obj) { console.log(obj.id); });
+    })
+    console.log(result)
   }
+//    return fs.readdirSync(dir).reduce((acc, filename) => {
+//      try {
+//        const geojson = tj.gpx(
+//          xmldom.parseFromString(
+//            fs.readFileSync(path.join(dir, filename), 'utf8')
+//          )
+//        )
+//        if (
+//          geojson.type === 'FeatureCollection' &&
+//          Array.isArray(geojson.features)
+//        ) {
+//          geojson.features.forEach((feature, i) => {
+//            acc[uuidv3(filename + i, uuidNamespace)] = feature
+//          })
+//        }
+//      } catch (e) {
+//        console.error(e)
+//      }
+//      return acc
+//    }, {})
 }
